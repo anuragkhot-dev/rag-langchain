@@ -3,6 +3,8 @@ from langchain_core.documents import Document
 from langchain_ollama import OllamaEmbeddings, OllamaLLM
 from langchain_chroma import Chroma
 from langgraph.graph import StateGraph, END
+import json
+import re
 
 
 # Graph State
@@ -44,18 +46,20 @@ class LangGraph:
         context = "\n".join([doc.page_content for doc in documents])
 
         prompt = f"""
-        You are a strict evaluator.
+        You are a medical document assistant.
 
-        Determine if the context contains enough information to answer the query.
+        STRICT RULES:
+        - Use ONLY the context
+        - If not found, say: "Not available in the document"
+        - Answer only as YES or NO
 
-        Rules:
-        - If directly relevant → YES
-        - If partially or unrelated → NO
+        Context:
+        {context}
 
-        Query: {query}
+        User Query:
+        {query}
 
-        Context: {context}
-        Answer only YES or NO
+        Answer clearly and concisely.
         """
 
         result = LangGraph.llm.invoke(prompt).strip().upper()
@@ -76,27 +80,66 @@ class LangGraph:
                 "answer": "I couldn't find relevant information in the document."
             }
 
-        prompt = prompt = f"""
-        You are an AI document reader helping analyze any document.
+        prompt = prompt = prompt = f"""
+        You are a medical document information extractor.
+
+        Your task is to extract structured patient information from the given context.
 
         STRICT RULES:
         - Use ONLY the provided context
-        - Do NOT add external knowledge
-        - If information is missing, say clearly: "Not available in the document"
-        - Be precise and concise
+        - Do NOT infer or assume anything
+        - If a field is missing, return: "Not available"
+        - Be precise and do not add explanations
+        - If multiple values exist, return them as a comma-separated list
+        - Return ONLY valid JSON
+        - Do NOT add any text before or after JSON
+        - Output must start with '{' and end with '}'
 
-        FORMAT:
-        - Answer: (direct answer)
-        - Supporting Evidence: (quote from context)
+        Extract the following fields:
 
-        Context: {context}
-        Question: {query}
+        1. Patient Name
+        2. Age
+        3. Gender
+        4. Medical Condition / Disease
+        5. Symptoms
+        6. Diagnosis
+        7. Treatment / Medication
+        8. Doctor Name (if available)
+        9. Hospital / Clinic (if available)
+        10. Date (if available)
+
+        OUTPUT FORMAT (STRICT JSON):
+        {{
+        "patient_name": "...",
+        "age": "...",
+        "gender": "...",
+        "medical_condition": "...",
+        "symptoms": "...",
+        "diagnosis": "...",
+        "treatment": "...",
+        "doctor": "...",
+        "hospital": "...",
+        "date": "..."
+        }}
+
+        Context:
+        {context}
         """
 
-        answer = LangGraph.llm.invoke(prompt)
+        raw_output = LangGraph.llm.invoke(prompt)
+
+        try : 
+            json_match = re.search(r"\{.*\}", raw_output, re.DOTALL)
+            clean_json = json.loads(json_match.group())
+            
+        except Exception as e:
+            clean_json = {
+                "error" : "Invalid Json outptu",
+                "raw_output" : raw_output
+            } 
 
         return {
-            "answer": answer
+            "answer": clean_json
         }
 
     def retry_node(state:GraphState):

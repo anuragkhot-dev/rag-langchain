@@ -8,10 +8,10 @@ lang_chain = LangChain()
 async def query_api(file:UploadFile = File(...), query:str = Form(...)) :
 
     if not file :
-        raise HTTPException(status_code=400, detail = "File is required")
+        raise HTTPException(status_code=400, detail ="File is required")
     
     if not query :
-        raise HTTPException(sttaus_code=400, detail = "Query is required")
+        raise HTTPException(status_code=400, detail ="Query is required")
     
     vector_store = lang_chain.ingest_document(file, query)
 
